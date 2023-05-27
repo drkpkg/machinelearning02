@@ -1,3 +1,6 @@
+import os
+import uuid
+
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -26,18 +29,24 @@ while True:
     prediction = model.predict(input_image)[0]
     predicted_label = np.argmax(prediction)
 
-    # Find contours around the hand-written number
+    # Check the accuracy of the prediction
+    accuracy = prediction[predicted_label] * 100
+
     contours, hierarchy = cv2.findContours(resized.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if len(contours) > 0:
-        # Find the contour with the largest area
-        max_contour = max(contours, key=cv2.contourArea)
-
-        # Get the bounding box for the contour and draw a rectangle around it
-        x, y, w, h = cv2.boundingRect(max_contour)
-        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+        # Show a rectangle around the digit in the frame
+        x, y, w, h = cv2.boundingRect(contours[0])
+        #cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0))
+        # check if dataset folder exists dataset/{predicted_label}
+        if not os.path.exists(f'dataset/{predicted_label}'):
+            os.makedirs(f'dataset/{predicted_label}')
+        # Add frame to the dataset
+        if accuracy > 90:
+            cv2.imwrite(f'dataset/{predicted_label}/{str(uuid.uuid4())}.jpg', resized[y:y + h, x:x + w])
 
     # Overlay the predicted label onto the frame
-    cv2.putText(frame, str(predicted_label), (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
+    cv2.putText(frame, f"Pred: {str(predicted_label)}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
+    cv2.putText(frame, f"Acc: {str(round(accuracy, 2))}%", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
 
     # Display the frame with the overlay and rectangle
     cv2.imshow('frame', frame)
