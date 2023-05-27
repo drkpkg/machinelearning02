@@ -1,60 +1,76 @@
-import os
-import uuid
-
 import cv2
 import numpy as np
 import tensorflow as tf
+import h5py
+from uuid import uuid4
 
-# Load the MNIST dataset
-(_, _), (_, _) = tf.keras.datasets.mnist.load_data()
-
-# Load the trained machine learning model
+# Load the trained model
 model = tf.keras.models.load_model('dataset.h5')
 
-# Start the video capture
+# Load the dataset.h5 file
+# dataset = h5py.File('dataset.h5', 'r')
+# x_test = dataset['x_test'][:]
+# y_test = dataset['y_test'][:]
+# dataset.close()
+
+# Function to predict the number
+def predict_number(image):
+    # Preprocess the image
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = cv2.resize(image, (28, 28))
+    image = image.reshape(1, 28, 28, 1)
+    image = image.astype('float32')
+    image /= 255
+
+    # Perform the prediction
+    predictions = model.predict(image)
+    predicted_number = np.argmax(predictions[0])
+    accuracy = predictions[0][predicted_number]
+
+    return predicted_number, accuracy
+
+# Initialize the webcam
 cap = cv2.VideoCapture(0)
 
+# Define the square region of interest (ROI)
+square_size = 200
+square_color = (0, 255, 0)  # Green color (BGR format)
+frame_width = int(cap.get(3))
+frame_height = int(cap.get(4))
+roi_top_left = (int((frame_width - square_size) / 2), int((frame_height - square_size) / 2))
+roi_bottom_right = (roi_top_left[0] + square_size, roi_top_left[1] + square_size)
+
 while True:
-    # Capture a frame from the video feed
+    # Capture frame from webcam
     ret, frame = cap.read()
 
-    # Preprocess the frame to be in the same format as the MNIST dataset
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    resized = cv2.resize(gray, (28, 28))
-    normalized = resized.astype('float32') / 255.0
-    input_image = np.expand_dims(normalized, axis=-1)
-    input_image = np.expand_dims(input_image, axis=0)
+    # Draw the square ROI
+    cv2.rectangle(frame, roi_top_left, roi_bottom_right, square_color, 2)
 
-    # Pass the preprocessed frame through the model to obtain predictions
-    prediction = model.predict(input_image)[0]
-    predicted_label = np.argmax(prediction)
+    # Extract the ROI
+    roi = frame[roi_top_left[1]:roi_bottom_right[1], roi_top_left[0]:roi_bottom_right[0]]
 
-    # Check the accuracy of the prediction
-    accuracy = prediction[predicted_label] * 100
+    # Predict the number if ROI is not empty
+    if roi.size > 0:
+        predicted_number, accuracy = predict_number(roi)
 
-    contours, hierarchy = cv2.findContours(resized.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if len(contours) > 0:
-        # Show a rectangle around the digit in the frame
-        x, y, w, h = cv2.boundingRect(contours[0])
-        #cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0))
-        # check if dataset folder exists dataset/{predicted_label}
-        if not os.path.exists(f'dataset/{predicted_label}'):
-            os.makedirs(f'dataset/{predicted_label}')
-        # Add frame to the dataset
-        if accuracy > 90:
-            cv2.imwrite(f'dataset/{predicted_label}/{str(uuid.uuid4())}.jpg', resized[y:y + h, x:x + w])
+        # Display the predicted number and accuracy
+        cv2.putText(frame, f"Number: {predicted_number}", (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
+        cv2.putText(frame, f"Accuracy: {accuracy:.2%}", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
 
-    # Overlay the predicted label onto the frame
-    cv2.putText(frame, f"Pred: {str(predicted_label)}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
-    cv2.putText(frame, f"Acc: {str(round(accuracy, 2))}%", (10, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        # Save the recognized number as a JPG file
+        if accuracy > 0.9:
+            number_folder = f"dataset/{predicted_number}"
+            image_name = f"{uuid4()}.jpg"
+            cv2.imwrite(f"{number_folder}/{image_name}", roi)
 
-    # Display the frame with the overlay and rectangle
-    cv2.imshow('frame', frame)
+    # Display the frame
+    cv2.imshow('Webcam', frame)
 
-    # Check for user input to exit the program
+    # Break the loop when 'q' is pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Release the video capture and close the display window
+# Release the webcam and close windows
 cap.release()
 cv2.destroyAllWindows()
